@@ -1,12 +1,14 @@
-# On-Premise Clinical LLM Framework
+# LOTUS-LLM: Lifecycle for On-premise Tuning Under Safeguards
 
-Code and templates accompanying the paper **"From Governance to Deployment: A Framework for On-Premise Fine-Tuning of Clinical Language Models in Healthcare Organisations"** (in preparation for *Health Information Science and Systems*).
+Code accompanying the manuscript **"LOTUS-LLM: A Governance and Implementation Framework for On-Premise Fine-Tuning of Clinical Language Models in Healthcare Organisations"** (in preparation for *Health Information Science and Systems*; journal and DOI to be added).
 
-The repository shows how a healthcare provider can adapt an open-weight large language model (LLM) to its own clinical notes **without any patient data leaving its premises**: a large local "teacher" model annotates notes, a small local "student" model is fine-tuned with LoRA, and every step is governed, checkpointed and auditable.
+LOTUS-LLM shows how a healthcare provider can adapt an open-weight large language model (LLM) to its own clinical notes **without any patient data leaving its premises**. A large local "teacher" model annotates notes, a small local "student" model is fine-tuned with LoRA, and every step is governed, checkpointed and auditable. The case study extracts structured clinical information from MIMIC-III ICU notes on a single NVIDIA DGX Spark.
 
-> **No data, labels, model outputs or trained adapters are included.** MIMIC-III and the n2c2 corpora may only be obtained by credentialed users under their own data-use agreements. See [DATA_USE.md](DATA_USE.md).
+> **No MIMIC-III data, labels, model outputs or trained adapters are included.** Credentialed PhysioNet access is required to reproduce the case study. See [DATA_USE.md](DATA_USE.md).
 
-## The framework
+## Framework overview
+
+![LOTUS-LLM lifecycle](figures/Fig1_framework_architecture.svg)
 
 | Stage | Purpose |
 | --- | --- |
@@ -19,61 +21,90 @@ The repository shows how a healthcare provider can adapt an open-weight large la
 | 6 Deployment and operations | Capacity and resilience planning, human review, incident handling |
 | 7 Monitoring and retirement | Drift monitoring, revalidation, audit trail, retirement |
 
-## Demonstration task
+## Case study
 
-Structured extraction of **problems, medications, tests and results**, each with **negation, certainty and temporality**, from MIMIC-III ICU notes into a fixed JSON schema, on a single NVIDIA DGX Spark (128 GB unified memory).
+Extraction of **problems, medications, tests and results**, each with **negation, certainty and temporality**, from MIMIC-III discharge summaries, physician and nursing notes into a fixed JSON schema.
 
 | Role | Model |
 | --- | --- |
-| Teacher (served locally with vLLM) | `nvidia/Qwen3.6-35B-A3B-NVFP4` |
-| Student (LoRA fine-tuned) | `Qwen/Qwen2.5-3B-Instruct` (check its licence for your use) |
-| Baselines | Rule-based lexicon + NegEx-style cues; untuned student |
+| Teacher, served locally with vLLM | `nvidia/Qwen3.6-35B-A3B-NVFP4` |
+| Student, LoRA fine-tuned | `Qwen/Qwen2.5-3B-Instruct` (check its licence for your use) |
+| Baselines | Rule-based lexicon with NegEx-style cues; untuned student |
+
+## Component map
+
+| Component | Notebook steps | Script stage (`src/mimic_pipeline.py`) | Framework stage |
+| --- | --- | --- | --- |
+| Note selection, cleaning, de-duplication, chunking, patient-level split, sampling | 1–4 | `prep` | 1 |
+| Schema, guideline, teacher extraction with evidence check | 5–11 | `silver` | 3 |
+| Annotator files, label loading, training data | 12–15 | `labels` | 3 |
+| LoRA fine-tuning (v1: 4,096 tokens; v2: 8,192 tokens) | 16–18 | `train` | 4 |
+| Test-set predictions for all systems | 19–22 | `predict` | 5 |
+| Evaluation: teacher agreement, faithfulness, output validity, significance, errors | 23–31 | `eval` | 5 |
+| Excel annotation workflow | `src/annot_excel.py` | | 3 |
+| Diagnostics (counts only) | `src/diag.py` | | 5, 6 |
+
+Main results come from the `silver`, `train`, `predict` and `eval` stages. The notebook's cells are marked **RUN / SKIP / DO NOT RUN** so it can be restarted after an interruption without redoing heavy steps.
 
 ## Repository contents
 
 | Path | What it is |
 | --- | --- |
-| `notebooks/MIMIC_LoRA_Clinical_IE_Pipeline.ipynb` | Step-by-step notebook (outputs cleared). Cells are marked RUN / SKIP / DO NOT RUN for restarting after a crash. |
-| `src/mimic_pipeline.py` | Resumable command-line pipeline: preprocessing, teacher annotation, training, prediction, evaluation |
-| `src/annot_excel.py` | Converts annotation files to Excel workbooks for clinicians and back, with validation |
-| `src/diag.py` | Diagnostics (counts and structure only, never note text) |
+| `notebooks/MIMIC_LoRA_Clinical_IE_Pipeline.ipynb` | Step-by-step notebook, outputs cleared |
+| `src/mimic_pipeline.py` | Resumable command-line pipeline |
+| `src/annot_excel.py` | Annotation files to Excel workbooks for clinicians and back, with validation |
+| `src/diag.py` | Diagnostics that print counts and structure, never note text |
 | `scripts/run_pipeline.sh` | Starts or resumes the pipeline in the background |
-| `docs/annotation_guideline.md` | Annotation guideline for clinical annotators |
+| `docs/annotation_guideline.md` | Guideline for clinical annotators |
+| `figures/Fig1_framework_architecture.svg` | The LOTUS-LLM lifecycle |
 
-## Quick start
+## Data access
+
+1. Complete the required training and become a credentialed PhysioNet user.
+2. Sign the MIMIC-III v1.4 data use agreement and download the data.
+3. Load the MIMIC-III tables into a local DuckDB file (default `~/mimic_project/mimic3.duckdb`, or set `MIMIC_DB`).
+4. Optional gold-standard evaluation: request the n2c2 2010 and 2018 Track 2 corpora through the DBMI Data Portal under its own agreement.
+
+**Data use warning:** everything written to the output folder (`IE_OUT_DIR`, default `~/mimic_project/ie_pipeline`) contains note text or text derived from it: teacher and student outputs, labels, annotation workbooks, error analyses. Never commit it to a public repository; share it only with credentialed users. All LLM inference runs on local servers; no patient data is sent to external services.
+
+## Requirements
+
+- Python 3.12; packages in `requirements.txt`.
+- A local vLLM server with the teacher model, needed only for teacher annotation and the teacher baseline. Version used: [add your vLLM version].
+- Hardware used: one NVIDIA DGX Spark (GB10, 128 GB unified CPU–GPU memory).
+- Settings: `MIMIC_DB`, `IE_OUT_DIR`, `VLLM_URL` (environment variables), plus the configuration cell at the top of the notebook.
+
+## Running
 
 ```bash
 pip install -r requirements.txt
-
-# 1. Serve the teacher model locally (example)
-#    vllm serve nvidia/Qwen3.6-35B-A3B-NVFP4 --port 8001 ...
-
-# 2. Point the pipeline at your MIMIC-III DuckDB file
-export MIMIC_DB=~/mimic_project/mimic3.duckdb
-
-# 3. Check status, then run (resumes automatically after any interruption)
-python src/mimic_pipeline.py --status
-bash scripts/run_pipeline.sh                       # includes LoRA training
-python src/mimic_pipeline.py --stage eval          # evaluation only
+python src/mimic_pipeline.py --status              # what is already done
+bash scripts/run_pipeline.sh                        # all stages incl. LoRA training, resumable
+PIPELINE_ARGS="--train --tag v2 --max-length 8192 --gen-tokens 8192 --batch-size 1" bash scripts/run_pipeline.sh
+python src/mimic_pipeline.py --stage eval          # evaluation only, minutes
 ```
 
-Useful options: `--tag v2` (separate model version), `--max-length 8192`, `--gen-tokens 8192`, `--batch-size 1` (lower memory), `--workers 6` (parallel teacher requests), `--max-temp 87` (pause when the GPU is hot).
+Approximate run times on one DGX Spark: teacher annotation of 600 chunks about 2.5 h (6–16 parallel requests); LoRA training about 70–110 min; student inference on 120 test chunks about 2–3 h.
 
-## Resilience features (from real incidents)
+## Reproducibility notes
 
-- Every teacher and student output is written and flushed to disk per note chunk; reruns skip finished work.
-- LoRA checkpoints every 10 steps, with an integrity check that skips checkpoints damaged by a power cut.
-- Free-memory check before training; batch size and sequence length are configurable for shared servers.
-- A run lock prevents two copies running at once; logs never print note text.
+- Fixed seed 42 for the patient-level split, sampling and training.
+- Teacher: temperature 0, schema-constrained JSON output, thinking mode off; entities whose evidence is not found in the note are discarded.
+- The 600-chunk sample (420 train / 60 validation / 120 test) is saved once and never overwritten, so all systems are scored on the same chunks.
+- LoRA: rank 16, alpha 32, dropout 0.05, all attention and MLP projections, 3 epochs, effective batch 16, learning rate 2e-4 (cosine).
+- Every output is appended per chunk to JSONL files and flushed to disk; LoRA checkpoints are saved every 10 steps with an integrity check, so all stages resume after interruptions.
+- Software versions are written to `results/reproducibility.json` at each evaluation.
 
 ## Citation
 
-Saxena A, et al. From governance to deployment: a framework for on-premise fine-tuning of clinical language models in healthcare organisations. *In preparation*, 2026.
-
-Please also cite MIMIC-III (Johnson et al., *Sci Data* 2016) and, where used, the n2c2 2010 (Uzuner et al., *JAMIA* 2011) and 2018 (Henry et al., *JAMIA* 2020) shared tasks.
+Please cite the article (BibTeX to be added after publication). Also cite MIMIC-III (Johnson et al., *Sci Data* 2016) and, where used, the n2c2 2010 (Uzuner et al., *JAMIA* 2011) and 2018 (Henry et al., *JAMIA* 2020) shared tasks.
 
 ## Licence
 
-Code: MIT (see [LICENSE](LICENSE)). Models and datasets are subject to their own licences and data-use agreements.
+MIT, covering the code only (see [LICENSE](LICENSE)). MIMIC-III remains governed by the PhysioNet Credentialed Health Data License and its data use agreement; models are subject to their own licences.
 
 This is a research prototype and must not be used for clinical decision-making.
+
+## Contact
+
+Aditya Saxena, School of Digital Health, IIHMR University, Jaipur, India.
