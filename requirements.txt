@@ -1,0 +1,22 @@
+# Versions used in the demonstration (NVIDIA DGX Spark, aarch64, CUDA 13.0, Python 3.12).
+# On DGX Spark, install PyTorch from NVIDIA's CUDA-enabled wheels or container first.
+torch>=2.12
+transformers>=5.18
+peft>=0.19
+trl>=0.29
+datasets
+accelerate
+safetensors
+openai
+duckdb
+pandas
+pyarrow
+numpy
+scikit-learn
+pydantic>=2
+rapidfuzz
+openpyxl
+matplotlib
+tqdm
+nbformat
+# Teacher model serving (run separately, e.g. in NVIDIA's vLLM container): vllm

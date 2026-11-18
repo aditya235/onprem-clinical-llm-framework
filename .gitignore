@@ -1,0 +1,46 @@
+# ------------------------------------------------------------------
+# NEVER commit data, derived labels, model outputs or trained adapters.
+# MIMIC-III and n2c2 data-use agreements forbid redistribution.
+# ------------------------------------------------------------------
+
+# Databases and raw data
+*.duckdb
+*.duckdb.wal
+*.csv.gz
+MIMIC_data/
+mimic_project/
+data/
+n2c2/
+
+# Pipeline outputs (contain note text or labels derived from it)
+ie_pipeline/
+silver/
+gold/
+preds/
+results/
+figures/
+logs/
+*.jsonl
+*.parquet
+*.xlsx
+
+# Trained models / checkpoints
+models/
+checkpoint-*/
+corrupt_checkpoint-*/
+*.safetensors
+*.bin
+*.pt
+*.tar.gz
+
+# Notebook outputs: clear all outputs before committing (see DATA_USE.md)
+.ipynb_checkpoints/
+
+# Python / OS
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.DS_Store
+Thumbs.db
